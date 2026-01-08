@@ -1,5 +1,7 @@
 # DeepSeek Quick Navigation Tool
 
+![demo](./demo.gif)
+
 [中文](#中文) | [English](#english)
 
 ---
