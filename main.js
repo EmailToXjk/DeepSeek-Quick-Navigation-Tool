@@ -7,6 +7,7 @@
 // @match        https://chat.deepseek.com/*
 // @icon         https://cdn.deepseek.com/chat/icon.png
 // @grant        none
+// @license      MIT
 // ==/UserScript==
 
 (function() {
