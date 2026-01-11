@@ -15,6 +15,7 @@
 
     const buttonMap = new Map();
     let updateTimeout = null;
+    let allContainerDivs = [];
 
     function initObserver() {
         const observer = new MutationObserver(function(mutations) {
@@ -46,25 +47,30 @@
         updateTimeout = setTimeout(updateAllButtons, 500);
     }
 
-    function updateAllButtons() {
-        const allMessageDivs = document.querySelectorAll('div[class*="ds-message"]');
-        const containerDivs = [];
-        const messageDivs = [];
+    function getAllDivs() {
+        allContainerDivs = [];
+        const allMessageDivs = [];
 
-        allMessageDivs.forEach(div => {
+        const allDivs = document.querySelectorAll('div[class*="ds-message"]');
+        allDivs.forEach(div => {
             const className = div.className || '';
             if (!className.includes('ds-message')) return;
 
             const spaceCount = (className.match(/ /g) || []).length;
-            if (spaceCount === 2) containerDivs.push(div);
-            else if (spaceCount === 1) messageDivs.push(div);
+            if (spaceCount === 2) allContainerDivs.push(div);
+            else if (spaceCount === 1) allMessageDivs.push(div);
         });
 
-        const minLength = Math.min(containerDivs.length, messageDivs.length);
+        return { allContainerDivs, allMessageDivs };
+    }
 
-        containerDivs.forEach((container, containerIndex) => {
+    function updateAllButtons() {
+        const { allContainerDivs, allMessageDivs } = getAllDivs();
+        const minLength = Math.min(allContainerDivs.length, allMessageDivs.length);
+
+        allContainerDivs.forEach((container, containerIndex) => {
             if (containerIndex < minLength) {
-                addOrUpdateButton(container, messageDivs[containerIndex], containerIndex, containerIndex);
+                addOrUpdateButton(container, allMessageDivs[containerIndex], containerIndex, containerIndex);
             } else {
                 removeButton(container);
             }
@@ -81,26 +87,32 @@
         if (!buttonContainer) {
             buttonContainer = document.createElement('div');
             buttonContainer.className = 'ds-scroll-btn-container';
-            buttonContainer.style.cssText = 'position: absolute; top: -35px; left: 50%; transform: translateX(-50%); z-index: 1000; opacity: 0.9; transition: opacity 0.2s;';
+            buttonContainer.style.cssText = 'position: absolute; top: -35px; left: 50%; transform: translateX(-50%); z-index: 1000; opacity: 0.9; transition: opacity 0.2s; display: flex; align-items: center; gap: 8px;';
 
-            const button = document.createElement('button');
-            button.textContent = `Chat ${messageIndex + 1}`;
-            button.style.cssText = 'padding: 4px 12px; background: linear-gradient(135deg, #10a37f, #0d8c6d); color: white; border: none; border-radius: 16px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(16, 163, 127, 0.3); white-space: nowrap; backdrop-filter: blur(4px); min-width: 60px;';
+            const prevButton = createNavButton('◀');
+            prevButton.addEventListener('click', function(e) {
+                e.stopPropagation();
+                navigateToContainerButton(containerIndex, 'prev');
+            });
 
-            button.addEventListener('mouseenter', function() {
+            const mainButton = document.createElement('button');
+            mainButton.textContent = `Chat ${messageIndex + 1}`;
+            mainButton.style.cssText = 'padding: 4px 12px; background: linear-gradient(135deg, #10a37f, #0d8c6d); color: white; border: none; border-radius: 16px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(16, 163, 127, 0.3); white-space: nowrap; backdrop-filter: blur(4px); min-width: 60px;';
+
+            mainButton.addEventListener('mouseenter', function() {
                 this.style.background = 'linear-gradient(135deg, #0d8c6d, #0b755a)';
                 this.style.transform = 'translateY(-2px)';
                 this.style.boxShadow = '0 4px 12px rgba(16, 163, 127, 0.4)';
                 this.style.opacity = '1';
             });
 
-            button.addEventListener('mouseleave', function() {
+            mainButton.addEventListener('mouseleave', function() {
                 this.style.background = 'linear-gradient(135deg, #10a37f, #0d8c6d)';
                 this.style.transform = 'translateY(0)';
                 this.style.boxShadow = '0 2px 8px rgba(16, 163, 127, 0.3)';
             });
 
-            button.addEventListener('click', function(e) {
+            mainButton.addEventListener('click', function(e) {
                 e.stopPropagation();
                 if (targetMessage) {
                     const messageRect = targetMessage.getBoundingClientRect();
@@ -114,13 +126,91 @@
                 }
             });
 
-            buttonContainer.appendChild(button);
+            const nextButton = createNavButton('▶');
+            nextButton.addEventListener('click', function(e) {
+                e.stopPropagation();
+                navigateToContainerButton(containerIndex, 'next');
+            });
+
+            buttonContainer.appendChild(prevButton);
+            buttonContainer.appendChild(mainButton);
+            buttonContainer.appendChild(nextButton);
+
             if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
             container.prepend(buttonContainer);
             buttonMap.set(container, buttonContainer);
         } else {
-            const button = buttonContainer.querySelector('button');
-            if (button) button.textContent = `Chat ${messageIndex + 1}`;
+            const mainButton = buttonContainer.querySelector('button:nth-child(2)');
+            if (mainButton) mainButton.textContent = `Chat ${messageIndex + 1}`;
+        }
+    }
+
+    function createNavButton(text) {
+        const button = document.createElement('button');
+        button.textContent = text;
+        button.style.cssText = `
+            padding: 4px 8px;
+            background: linear-gradient(135deg, #10a37f, #0d8c6d);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 10px;
+            font-weight: bold;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 6px rgba(16, 163, 127, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            backdrop-filter: blur(4px);
+        `;
+
+        button.addEventListener('mouseenter', function() {
+            this.style.background = 'linear-gradient(135deg, #0d8c6d, #0b755a)';
+            this.style.transform = 'translateY(-2px)';
+            this.style.boxShadow = '0 4px 12px rgba(16, 163, 127, 0.4)';
+            this.style.opacity = '1';
+        });
+
+        button.addEventListener('mouseleave', function() {
+            this.style.background = 'linear-gradient(135deg, #10a37f, #0d8c6d)';
+            this.style.transform = 'translateY(0)';
+            this.style.boxShadow = '0 2px 6px rgba(16, 163, 127, 0.3)';
+        });
+
+        return button;
+    }
+
+    function navigateToContainerButton(currentIndex, direction) {
+        const { allContainerDivs } = getAllDivs();
+        const totalContainers = allContainerDivs.length;
+        if (totalContainers === 0) return;
+
+        let targetIndex;
+        if (direction === 'prev') {
+            targetIndex = (currentIndex - 1 + totalContainers) % totalContainers;
+        } else {
+            targetIndex = (currentIndex + 1) % totalContainers;
+        }
+
+        if (targetIndex >= 0 && targetIndex < totalContainers) {
+            const targetContainer = allContainerDivs[targetIndex];
+            const buttonContainer = buttonMap.get(targetContainer);
+
+            if (buttonContainer) {
+                const nextButton = buttonContainer.querySelector('button:last-child');
+                if (nextButton) {
+                    nextButton.focus();
+                    const containerRect = targetContainer.getBoundingClientRect();
+                    const isInViewport = containerRect.top >= 0 && containerRect.bottom <= (window.innerHeight || document.documentElement.clientHeight);
+
+                    if (!isInViewport) {
+                        targetContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }
+            }
         }
     }
 
