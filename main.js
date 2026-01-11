@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DeepSeek Quick Navigation Tool
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  Add scroll-to-conversation buttons for DeepSeek chat interface
 // @author       Emailtoxjk
 // @match        https://chat.deepseek.com/*
