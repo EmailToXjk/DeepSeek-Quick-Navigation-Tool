@@ -92,34 +92,72 @@
     function updateAllButtons() {
         const { allContainerDivs: newContainerDivs, allMessageDivs: newMessageDivs } = getAllDivs();
 
-        // 更新全局变量
-        allContainerDivs = newContainerDivs;
+        // 检查浮动按钮是否需要更新
+        const targetDiv = document.querySelector('div[class*="aaff8b8f"]');
+        const needsFloatingButton = targetDiv && !targetDiv.querySelector('.ds-atom-button_top');
 
-        const minLength = Math.min(newContainerDivs.length, newMessageDivs.length);
+        // 检查聊天按钮是否需要更新
+        let needsChatUpdate = newContainerDivs.length !== allContainerDivs.length;
 
-        // 处理现有的按钮
-        const processedContainers = new Set();
-
-        // 更新或添加按钮
-        newContainerDivs.forEach((container, containerIndex) => {
-            if (containerIndex < minLength) {
-                addOrUpdateButton(container, newMessageDivs[containerIndex], containerIndex, containerIndex);
-                processedContainers.add(container);
-            }
-        });
-
-        // 清理不再存在的按钮
-        for (const [container, buttonData] of buttonMap.entries()) {
-            if (!processedContainers.has(container)) {
-                removeButton(container);
+        // 如果数量没变，检查buttonMap中是否有缺失的按钮
+        if (!needsChatUpdate) {
+            for (const container of newContainerDivs) {
+                if (!buttonMap.has(container)) {
+                    needsChatUpdate = true;
+                    break;
+                }
             }
         }
 
-        // 清理已删除容器的映射
-        for (const [container] of buttonMap.entries()) {
-            if (!document.body.contains(container)) {
-                buttonMap.delete(container);
+        // 如果数量没变，检查已有按钮是否正确
+        if (!needsChatUpdate) {
+            for (const container of newContainerDivs) {
+                const buttonData = buttonMap.get(container);
+                if (!buttonData ||
+                    !buttonData.nav ||
+                    !buttonData.nav.parentNode ||
+                    !buttonData.top ||
+                    !buttonData.top.parentNode) {
+                    needsChatUpdate = true;
+                    break;
+                }
             }
+        }
+
+        // 更新全局变量
+        allContainerDivs = newContainerDivs;
+
+        // 执行必要的更新
+        if (needsChatUpdate) {
+            const minLength = Math.min(newContainerDivs.length, newMessageDivs.length);
+            const processedContainers = new Set();
+
+            // 更新或添加按钮
+            newContainerDivs.forEach((container, containerIndex) => {
+                if (containerIndex < minLength) {
+                    addOrUpdateButton(container, newMessageDivs[containerIndex], containerIndex, containerIndex);
+                    processedContainers.add(container);
+                }
+            });
+
+            // 清理不再存在的按钮
+            for (const [container, buttonData] of buttonMap.entries()) {
+                if (!processedContainers.has(container)) {
+                    removeButton(container);
+                }
+            }
+
+            // 清理已删除容器的映射
+            for (const [container] of buttonMap.entries()) {
+                if (!document.body.contains(container)) {
+                    buttonMap.delete(container);
+                }
+            }
+        }
+
+        // 更新浮动按钮
+        if (needsFloatingButton) {
+            addFloatingScrollTopButton();
         }
     }
 
