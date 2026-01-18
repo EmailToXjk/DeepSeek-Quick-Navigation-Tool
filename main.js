@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DeepSeek Quick Navigation Tool
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.2
 // @description  Add scroll-to-conversation buttons for DeepSeek chat interface
 // @author       Emailtoxjk
 // @match        https://chat.deepseek.com/*
@@ -76,16 +76,19 @@
             }
         });
 
-        for (const [container] of buttonMap.entries()) {
-            if (!document.body.contains(container)) buttonMap.delete(container);
+        // 检查目标消息div是否还存在
+        for (const [container, buttonData] of buttonMap.entries()) {
+            if (!document.body.contains(container)) {
+                buttonMap.delete(container);
+            }
         }
     }
 
     function addOrUpdateButton(container, targetMessage, containerIndex, messageIndex) {
-        let buttonContainer = buttonMap.get(container);
+        let buttonData = buttonMap.get(container);
 
-        if (!buttonContainer) {
-            buttonContainer = document.createElement('div');
+        if (!buttonData) {
+            const buttonContainer = document.createElement('div');
             buttonContainer.className = 'ds-scroll-btn-container';
             buttonContainer.style.cssText = 'position: absolute; top: -35px; left: 50%; transform: translateX(-50%); z-index: 1000; opacity: 0.9; transition: opacity 0.2s; display: flex; align-items: center; gap: 8px;';
 
@@ -110,6 +113,7 @@
                 this.style.background = 'linear-gradient(135deg, #10a37f, #0d8c6d)';
                 this.style.transform = 'translateY(0)';
                 this.style.boxShadow = '0 2px 8px rgba(16, 163, 127, 0.3)';
+
             });
 
             mainButton.addEventListener('click', function(e) {
@@ -138,9 +142,50 @@
 
             if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
             container.prepend(buttonContainer);
-            buttonMap.set(container, buttonContainer);
+
+            // 输入底部添加▲按钮
+            const containerTopButtonContainer = document.createElement('div');
+            containerTopButtonContainer.className = 'ds-container-top-btn-container';
+            containerTopButtonContainer.style.cssText = 'position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); z-index: 1000;';
+
+            const containerTopButton = createNavButton('▲');
+
+            containerTopButton.addEventListener('click', function(e) {
+                e.stopPropagation();
+                container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+
+            containerTopButtonContainer.appendChild(containerTopButton);
+            container.appendChild(containerTopButtonContainer);
+
+            // 底部添加▲按钮
+            const topButtonContainer = document.createElement('div');
+            topButtonContainer.className = 'ds-top-btn-container';
+            topButtonContainer.style.cssText = 'position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); z-index: 1000;';
+
+            const topButton = createNavButton('▲');
+
+            topButton.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (targetMessage) {
+                    targetMessage.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    highlightMessage(targetMessage);
+                }
+            });
+
+            topButtonContainer.appendChild(topButton);
+            if (getComputedStyle(targetMessage).position === 'static') targetMessage.style.position = 'relative';
+            targetMessage.appendChild(topButtonContainer);
+
+            // 修改
+            buttonMap.set(container, {
+                nav: buttonContainer,
+                top: topButtonContainer,
+                containerTop: containerTopButtonContainer,
+                targetMessage: targetMessage,
+            });
         } else {
-            const mainButton = buttonContainer.querySelector('button:nth-child(2)');
+            const mainButton = buttonData.nav.querySelector('button:nth-child(2)');
             if (mainButton) mainButton.textContent = `Chat ${messageIndex + 1}`;
         }
     }
@@ -148,6 +193,13 @@
     function createNavButton(text) {
         const button = document.createElement('button');
         button.textContent = text;
+
+        // ▲按钮字体稍大一点
+        const isTopButton = text === '▲';
+        const buttonSize = '24px';
+		const buttonOpacity = 0.5;
+        const fontSize = isTopButton ? '12px' : '10px';
+
         button.style.cssText = `
             padding: 4px 8px;
             background: linear-gradient(135deg, #10a37f, #0d8c6d);
@@ -155,16 +207,17 @@
             border: none;
             border-radius: 12px;
             cursor: pointer;
-            font-size: 10px;
+            font-size: ${fontSize};
             font-weight: bold;
             transition: all 0.2s ease;
             box-shadow: 0 2px 6px rgba(16, 163, 127, 0.3);
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 24px;
-            height: 24px;
+            width: ${buttonSize};
+            height: ${buttonSize};
             backdrop-filter: blur(4px);
+            opacity: ${buttonOpacity};
         `;
 
         button.addEventListener('mouseenter', function() {
@@ -178,6 +231,8 @@
             this.style.background = 'linear-gradient(135deg, #10a37f, #0d8c6d)';
             this.style.transform = 'translateY(0)';
             this.style.boxShadow = '0 2px 6px rgba(16, 163, 127, 0.3)';
+			// 恢复透明度
+            this.style.opacity = buttonOpacity;
         });
 
         return button;
@@ -197,10 +252,10 @@
 
         if (targetIndex >= 0 && targetIndex < totalContainers) {
             const targetContainer = allContainerDivs[targetIndex];
-            const buttonContainer = buttonMap.get(targetContainer);
+            const buttonData = buttonMap.get(targetContainer);
 
-            if (buttonContainer) {
-                const nextButton = buttonContainer.querySelector('button:last-child');
+            if (buttonData) {
+                const nextButton = buttonData.nav.querySelector('button:last-child');
                 if (nextButton) {
                     nextButton.focus();
                     const containerRect = targetContainer.getBoundingClientRect();
@@ -214,10 +269,16 @@
         }
     }
 
+    // 同时移除两类按钮
     function removeButton(container) {
-        const buttonContainer = buttonMap.get(container);
-        if (buttonContainer && buttonContainer.parentNode) {
-            buttonContainer.parentNode.removeChild(buttonContainer);
+        const buttonData = buttonMap.get(container);
+        if (buttonData) {
+            if (buttonData.nav && buttonData.nav.parentNode) {
+                buttonData.nav.parentNode.removeChild(buttonData.nav);
+            }
+            if (buttonData.top && buttonData.top.parentNode) {
+                buttonData.top.parentNode.removeChild(buttonData.top);
+            }
             buttonMap.delete(container);
         }
     }
