@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DeepSeek Quick Navigation Tool
 // @namespace    http://tampermonkey.net/
-// @version      1.2
-// @description  Add scroll-to-conversation buttons for DeepSeek chat interface
+// @version      1.3
+// @description  Add move to top button. Optimize page update strategy
 // @author       Emailtoxjk
 // @match        https://chat.deepseek.com/*
 // @icon         https://cdn.deepseek.com/chat/icon.png
@@ -42,14 +42,36 @@
         return observer;
     }
 
+    // 优化更新策略
     function scheduleUpdate() {
         clearTimeout(updateTimeout);
-        updateTimeout = setTimeout(updateAllButtons, 500);
+        updateTimeout = setTimeout(() => {
+            // 检查是否有新增或删除的聊天
+            const { allContainerDivs: newContainerDivs, allMessageDivs: newMessageDivs } = getAllDivs();
+
+            // 如果数量没变，检查buttonMap中是否有缺失的按钮
+            let needsUpdate = newContainerDivs.length !== allContainerDivs.length;
+
+            if (!needsUpdate) {
+                // 检查是否所有容器都有对应的按钮
+                for (const container of newContainerDivs) {
+                    if (!buttonMap.has(container)) {
+                        needsUpdate = true;
+                        break;
+                    }
+                }
+            }
+
+            if (needsUpdate) {
+                allContainerDivs = newContainerDivs;
+                updateAllButtons();
+            }
+        }, 1000);
     }
 
     function getAllDivs() {
-        allContainerDivs = [];
-        const allMessageDivs = [];
+        const currentContainerDivs = [];
+        const currentMessageDivs = [];
 
         const allDivs = document.querySelectorAll('div[class*="ds-message"]');
         allDivs.forEach(div => {
@@ -57,27 +79,44 @@
             if (!className.includes('ds-message')) return;
 
             const spaceCount = (className.match(/ /g) || []).length;
-            if (spaceCount === 2) allContainerDivs.push(div);
-            else if (spaceCount === 1) allMessageDivs.push(div);
+            if (spaceCount === 2) currentContainerDivs.push(div);
+            else if (spaceCount === 1) currentMessageDivs.push(div);
         });
 
-        return { allContainerDivs, allMessageDivs };
+        return {
+            allContainerDivs: currentContainerDivs,
+            allMessageDivs: currentMessageDivs
+        };
     }
 
     function updateAllButtons() {
-        const { allContainerDivs, allMessageDivs } = getAllDivs();
-        const minLength = Math.min(allContainerDivs.length, allMessageDivs.length);
+        const { allContainerDivs: newContainerDivs, allMessageDivs: newMessageDivs } = getAllDivs();
 
-        allContainerDivs.forEach((container, containerIndex) => {
+        // 更新全局变量
+        allContainerDivs = newContainerDivs;
+
+        const minLength = Math.min(newContainerDivs.length, newMessageDivs.length);
+
+        // 处理现有的按钮
+        const processedContainers = new Set();
+
+        // 更新或添加按钮
+        newContainerDivs.forEach((container, containerIndex) => {
             if (containerIndex < minLength) {
-                addOrUpdateButton(container, allMessageDivs[containerIndex], containerIndex, containerIndex);
-            } else {
-                removeButton(container);
+                addOrUpdateButton(container, newMessageDivs[containerIndex], containerIndex, containerIndex);
+                processedContainers.add(container);
             }
         });
 
-        // 检查目标消息div是否还存在
+        // 清理不再存在的按钮
         for (const [container, buttonData] of buttonMap.entries()) {
+            if (!processedContainers.has(container)) {
+                removeButton(container);
+            }
+        }
+
+        // 清理已删除容器的映射
+        for (const [container] of buttonMap.entries()) {
             if (!document.body.contains(container)) {
                 buttonMap.delete(container);
             }
@@ -143,7 +182,6 @@
             if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
             container.prepend(buttonContainer);
 
-            // 输入底部添加▲按钮
             const containerTopButtonContainer = document.createElement('div');
             containerTopButtonContainer.className = 'ds-container-top-btn-container';
             containerTopButtonContainer.style.cssText = 'position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); z-index: 1000;';
@@ -158,7 +196,6 @@
             containerTopButtonContainer.appendChild(containerTopButton);
             container.appendChild(containerTopButtonContainer);
 
-            // 底部添加▲按钮
             const topButtonContainer = document.createElement('div');
             topButtonContainer.className = 'ds-top-btn-container';
             topButtonContainer.style.cssText = 'position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); z-index: 1000;';
@@ -177,7 +214,6 @@
             if (getComputedStyle(targetMessage).position === 'static') targetMessage.style.position = 'relative';
             targetMessage.appendChild(topButtonContainer);
 
-            // 修改
             buttonMap.set(container, {
                 nav: buttonContainer,
                 top: topButtonContainer,
@@ -194,7 +230,6 @@
         const button = document.createElement('button');
         button.textContent = text;
 
-        // ▲按钮字体稍大一点
         const isTopButton = text === '▲';
         const buttonSize = '24px';
 		const buttonOpacity = 0.5;
@@ -231,7 +266,6 @@
             this.style.background = 'linear-gradient(135deg, #10a37f, #0d8c6d)';
             this.style.transform = 'translateY(0)';
             this.style.boxShadow = '0 2px 6px rgba(16, 163, 127, 0.3)';
-			// 恢复透明度
             this.style.opacity = buttonOpacity;
         });
 
@@ -269,7 +303,6 @@
         }
     }
 
-    // 同时移除两类按钮
     function removeButton(container) {
         const buttonData = buttonMap.get(container);
         if (buttonData) {
@@ -278,6 +311,9 @@
             }
             if (buttonData.top && buttonData.top.parentNode) {
                 buttonData.top.parentNode.removeChild(buttonData.top);
+            }
+            if (buttonData.containerTop && buttonData.containerTop.parentNode) {
+                buttonData.containerTop.parentNode.removeChild(buttonData.containerTop);
             }
             buttonMap.delete(container);
         }
@@ -298,6 +334,66 @@
             messageDiv.style.transition = originalTransition;
         }, 1500);
     }
+    function addFloatingScrollTopButton() {
+        // 查找包含aaff8b8f类名的div
+        const targetDiv = document.querySelector('div[class*="aaff8b8f"]');
+        if (!targetDiv) return;
+
+        // 检查是否已经添加了滚动到顶部按钮
+        const existingScrollTopButton = targetDiv.querySelector('.ds-atom-button_top');
+        if (existingScrollTopButton) return;
+
+        // 创建新的滚动到顶部按钮
+        const scrollTopButton = document.createElement('button');
+        scrollTopButton.setAttribute('role', 'button');
+        scrollTopButton.setAttribute('aria-disabled', 'false');
+        scrollTopButton.className = 'ds-atom-button_top _0e98de6 ds-floating-button ds-floating-button--icon ds-floating-button--lg';
+
+        scrollTopButton.style.cssText = 'padding: 9px; font-size: 14px; line-height: 0px; bottom: 132%;';
+
+        const iconDiv = document.createElement('div');
+        iconDiv.className = 'ds-icon ds-atom-button_top__icon';
+        iconDiv.style.cssText = 'font-size: 14px; width: 14px; height: 14px; margin-right: 0px;';
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', '14');
+        svg.setAttribute('height', '14');
+        svg.setAttribute('viewBox', '0 0 14 14');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+
+        // 垂直翻转
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M 2.1514 8.5 L 2.5762 8.0762 L 5.3027 5.3486 C 5.5584 5.0929 5.7844 4.8662 5.9883 4.7021 C 6.2009 4.5312 6.444 4.3824 6.75 4.334 C 6.9157 4.3078 7.0843 4.3078 7.25 4.334 C 7.556 4.3824 7.7991 4.5312 8.0117 4.7021 C 8.2156 4.8662 8.4416 5.0929 8.6973 5.3486 L 11.4238 8.0762 L 11.8486 8.5 L 11 9.3486 L 10.5762 8.9238 L 7.8486 6.1973 C 7.574 5.9227 7.4012 5.7515 7.2598 5.6377 C 7.1271 5.531 7.0773 5.5219 7.0625 5.5195 C 7.021 5.513 6.979 5.513 6.9375 5.5195 C 6.9227 5.5219 6.8729 5.531 6.7402 5.6377 C 6.5988 5.7515 6.426 5.9227 6.1514 6.1973 L 3.4238 8.9238 L 3 9.3486 L 2.1514 8.5 Z');
+        path.setAttribute('fill', 'currentColor');
+
+        svg.appendChild(path);
+        iconDiv.appendChild(svg);
+
+        // 空的span
+        const span = document.createElement('span');
+
+        scrollTopButton.appendChild(iconDiv);
+        scrollTopButton.appendChild(span);
+
+        // 点击滚动到顶部（实际滚动到第一个聊天）
+        scrollTopButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const { allContainerDivs, allMessageDivs } = getAllDivs();
+
+            if (allContainerDivs.length > 0) {
+                allContainerDivs[0].scrollIntoView({
+                    //behavior: 'smooth',
+                    block: 'start'
+                });
+            }
+        });
+
+        // 添加到目标div中
+        targetDiv.appendChild(scrollTopButton);
+    }
 
     function init() {
         const style = document.createElement('style');
@@ -312,6 +408,7 @@
 
         initObserver();
         setTimeout(updateAllButtons, 1000);
+        setTimeout(addFloatingScrollTopButton, 1000);
     }
 
     if (document.readyState === 'loading') {
